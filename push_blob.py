@@ -1,4 +1,3 @@
-  
 import argparse
 import os
 from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient, ContentSettings
@@ -8,7 +7,7 @@ import re
 from tqdm import tqdm
 
 
-def push_blob_f(video_id = None, container = None, basepath = None):
+def push_blob_f(video_id = None, container = None, basepath = '.'):
     upload_path = f'{video_id}'
     content_type = 'video/mp4'
     container = container
@@ -25,6 +24,8 @@ def push_blob_f(video_id = None, container = None, basepath = None):
     try:
         with open(f"{basepath}/{video_id}.mp4", "rb") as data:
             print(f"{basepath}/{video_id}.mp4 ->{upload_path}/{video_id}.mp4")
+            print("done")
+            print(blob_client)
             blob_client.upload_blob(data, overwrite=True, content_settings=contentType)
             print(f'{"<"*10} upload completed {">"*10}')
 
@@ -33,4 +34,4 @@ def push_blob_f(video_id = None, container = None, basepath = None):
         print("Upload failed")
 
 
-#push_blob_f(video_id='paswan', basepath='.', container='var')
+# push_blob_f(video_id='paswan', basepath='.', container='var')

@@ -1,12 +1,17 @@
 # handling data
 import numpy as np
 import pandas as pd
+from collections import Counter
 
 import os
 import io
 from io import BytesIO, StringIO
 import time
 from push_blob import push_blob_f
+import requests
+from oddf import odasdf
+from ast import literal_eval
+
 
 # MY-SQL connection
 import mysql.connector
@@ -118,49 +123,17 @@ def main():
     # Prediction
     elif choice == 'Prediction':
         # dictionary of encoded variables
-        d_background_music_type_first_3_seconds = {'loud': 0,
-                                                  'relevant': 1,
-                                                  'neutral': 2,
-                                                  'low': 3,
-                                                  'no music': 4}
-
         d_primary = {'sports & games': 0,
-                                       'government': 1,
-                                       'global news': 2,
-                                       'technology & innovations': 3,
-                                       'politics': 4,
-                                       'places': 5,
-                                       'environment/ecosystem': 6,
-                                       'rare': 7,
-                                       'entertainment': 8,
-                                       'lifestyle': 9,
-                                       'judiciary & crime': 10}
-
-        d_video_type = {'informative': 0,
-                        'inspiring': 1,
-                        'explainers': 2,
-                        'emotions': 3,
-                        'rare': 4,
-                        'day-specific': 5}
-
-        d_voice_first_3_seconds = {'text only (to)': 0,
-                                   'other': 1,
-                                   'rare': 2,
-                                   'common voice (optv)': 3,
-                                   'voice of famous personality (fpv)': 4}
-
-        d_thumbnail = {'object': 0,
-                       'crowd': 1,
-                       'famous personality': 2,
-                       'commoner': 3,
-                       'rare': 4}
-
-        d_time_distribution = {'9 AM - 12 PM': 0,
-                              '3 PM - 6 PM': 1,
-                              '9 PM - 12 AM': 2,
-                              '6 PM - 9 PM': 3,
-                              '12 PM - 03 PM': 4,
-                              '6 AM - 9 AM': 5}
+                       'government': 1,
+                       'global news': 2,
+                       'technology & innovations': 3,
+                       'politics': 4,
+                       'places': 5,
+                       'environment/ecosystem': 6,
+                       'rare': 7,
+                       'entertainment': 8,
+                       'lifestyle': 9,
+                       'judiciary & crime': 10}
 
 
         # OD
@@ -174,37 +147,68 @@ def main():
             with st.spinner("Cleaning....."):
                 os.system(f'rm {basepath}/*mp4')
 
-        if st.button(label="Clean cache"):
-            clean_cache()
+        r = requests.post("http://52.226.46.64:5000",
+                          json={'ID': '10220', 'FPS': '1', 'duration': '60', 'lang': 'hindi',
+                                'container': 'athenaliveprod'})
+        od_df = odasdf(literal_eval(r.text))
 
-        file = st.file_uploader("Upload file", type=["mp4"])
+        # Replace labels by super class labels
+        super_class_df = pd.read_csv('data/super_class_final.csv')
+        for i in range(od_df.shape[0]):
+            for j in range(super_class_df.shape[0]):
+                if od_df['label'][i] == super_class_df['person'][j]:
+                    od_df['label'][i] = super_class_df['person.3'][j]
 
-        show_f = st.empty()
+        # number_of_label_first_3_frame
+        # max area percent
+        count = 0
+        max_area = []
+        for num in range(od_df.shape[0]):
+            if od_df['frame'][num] == 1 or od_df['frame'][num] == 2 or od_df['frame'][num] == 3:
+                count = count + od_df['count'][num]
 
-        if not file:
-            pass
-            # show_f.info("Upload file")
+            max_area.append(od_df['area_percentage'][num])
 
-        else:
-            if isinstance(file, BytesIO):
-                show_f.video(file)
+        number_of_label_first_3_frame = count
+        max_area_percentage = max(max_area)
 
-                # os.system(f'rm *mp4')
-                file_name = time.strftime("%Y%m%d-%H%M%S")
+        # most_occured_label_first_3_frame_number
+        temp_df = od_df[od_df['frame']<4]
+        temp_df_label = Counter(temp_df['label'])
+        most_occured_label_first_3_frame_number = max(list(temp_df_label.values()))
 
-                with open(f'{basepath}/{file_name}.mp4', 'wb') as f:
-                    f.write(file.read())
-            if st.button(label="Upload BLOB"):
-                push_blob_f(video_id=file_name, container='var', basepath='.')
+        # most_occured_label_number
+        most_occured_label_number = max(list(Counter(od_df['label']).values()))
+
+        # if st.button(label="Clean cache"):
+        #     clean_cache()
+        #
+        # file = st.file_uploader("Upload file", type=["mp4"])
+        #
+        # show_f = st.empty()
+        #
+        # if not file:
+        #     pass
+        #     # show_f.info("Upload file")
+        #
+        # else:
+        #     if isinstance(file, BytesIO):
+        #         show_f.video(file)
+        #
+        #         # os.system(f'rm *mp4')
+        #         file_name = time.strftime("%Y%m%d-%H%M%S")
+        #
+        #         with open(f'{basepath}/{file_name}.mp4', 'wb') as f:
+        #             f.write(file.read())
+        #     if st.button(label="Upload BLOB"):
+        #         push_blob_f(video_id=file_name, container='var', basepath='.')
+
+
 
         # Take user input GOLDEN DATA
         primary = st.selectbox('Primary Category', tuple(d_primary.keys()))
-        video_type = st.selectbox('Video Type', tuple(d_video_type.keys()))
-        voice_first_3_seconds = st.selectbox('Voice In First 3 Seconds', tuple(d_voice_first_3_seconds.keys()))
-        background_music_type_first_3_seconds = st.selectbox('Background Music In First 3 Seconds', tuple(d_background_music_type_first_3_seconds.keys()))
-        thumbnail = st.selectbox('Thumbnail', tuple(d_thumbnail.keys()))
-        time_distribution = st.selectbox('Time Slot', tuple(d_time_distribution.keys()))
 
+        # Retreive data from FB API
         published_date = st.date_input('Video Publishing Date')
         # st.text(type(published_date))
         # Any production date after today will be consider as today only
@@ -219,14 +223,21 @@ def main():
         published_date = correct_date(published_date)
         #st.write(published_date)
 
-        last_day_features = ['last_day_page_consumptions_by_consumption_type_other_clicks', 'last_day_page_fan_adds_by_paid_non_paid_unique_unpaid',
-        'last_day_page_posts_impressions_nonviral_unique', 'last_day_page_fans', 'last_day_page_fan_removes_unique',
-        'last_day_page_video_complete_views_30s_paid', 'last_day_page_video_complete_views_30s_repeat_views', 'last_day_page_video_views_10s']
+        last_day_features = ['last_day_page_fan_adds_by_paid_non_paid_unique_paid',
+                             'last_day_page_impressions_unique',
+                             'last_day_page_posts_impressions_nonviral',
+                             'last_day_page_posts_impressions_nonviral_unique',
+                             'last_day_page_actions_post_reactions_like_total',
+                             'last_day_page_actions_post_reactions_wow_total',
+                             'last_day_page_actions_post_reactions_anger_total',
+                             'last_day_page_fan_removes_unique',
+                             'last_day_page_video_repeat_views',
+                             'last_day_page_video_complete_views_30s_autoplayed']
 
-        last_seven_day_features = ['last_7_days_page_fan_adds_by_paid_non_paid_unique_unpaid', 'last_7_days_page_impressions_nonviral',
-        'last_7_days_page_impressions_nonviral_unique', 'last_7_days_page_posts_impressions_nonviral_unique',
-        'last_7_days_page_actions_post_reactions_wow_total', 'last_7_days_page_actions_post_reactions_sorry_total',
-        'last_7_days_page_fans', 'last_7_days_page_fan_removes_unique', 'last_7_days_page_video_complete_views_30s_repeat_views']
+        # last_seven_day_features = ['last_7_days_page_fan_adds_by_paid_non_paid_unique_unpaid', 'last_7_days_page_impressions_nonviral',
+        # 'last_7_days_page_impressions_nonviral_unique', 'last_7_days_page_posts_impressions_nonviral_unique',
+        # 'last_7_days_page_actions_post_reactions_wow_total', 'last_7_days_page_actions_post_reactions_sorry_total',
+        # 'last_7_days_page_fans', 'last_7_days_page_fan_removes_unique', 'last_7_days_page_video_complete_views_30s_repeat_views']
 
         last_day_features_values = []
         last_seven_day_features_values = []
@@ -243,27 +254,21 @@ def main():
             cursor.close()
 
         # last seven days features extraction
-        for feature in last_seven_day_features:
-            value = 0
-            for i in range(1,8):
-                value = value + (ld_df[ld_df['consolidated_end_time'] == published_date - timedelta(days=i)][feature[12:]]).reset_index(
-                    drop=True)[0]
-            last_seven_day_features_values.append(value)
-            cursor.close()
+        # for feature in last_seven_day_features:
+        #     value = 0
+        #     for i in range(1,8):
+        #         value = value + (ld_df[ld_df['consolidated_end_time'] == published_date - timedelta(days=i)][feature[12:]]).reset_index(
+        #             drop=True)[0]
+        #     last_seven_day_features_values.append(value)
+        #     cursor.close()
 
         # GET VALUES FOR EACH INPUT
         k_primary = get_value(primary, d_primary)
-        k_video_type = get_value(video_type, d_video_type)
-        k_voice_first_3_seconds = get_value(voice_first_3_seconds, d_voice_first_3_seconds)
-        k_background_music_type_first_3_seconds = get_value(background_music_type_first_3_seconds,
-                                                                d_background_music_type_first_3_seconds)
-        k_thumbnail = get_value(thumbnail, d_thumbnail)
-        k_time_distribution = get_value(time_distribution, d_time_distribution)
 
         # RESULT OF USER INPUT
-        vectorized_result = [k_background_music_type_first_3_seconds, k_primary, k_video_type,
-                             k_voice_first_3_seconds, k_thumbnail,
-                             k_time_distribution] + last_day_features_values + last_seven_day_features_values
+        vectorized_result = [max_area_percentage,
+                            most_occured_label_number, number_of_label_first_3_frame,
+                            most_occured_label_first_3_frame_number, k_primary] + last_day_features_values
 
         # st.text(vectorized_result)
         sample_data = np.array(vectorized_result).reshape(1, -1)
@@ -273,25 +278,25 @@ def main():
 
         # from sklearn.preprocessing import MinMaxScaler
 
-        tr = load_transformer("models/pkl_transform_1.pkl")
-        transformed_sample_data = tr.transform(pd.DataFrame(data = sample_data, columns= ['visual_first_3_seconds', 'background_music_type_first_3_seconds',
-       'Primary_Category_1_grouped', 'voice_first_3_seconds_grouped',
-       'thumbnail_1_grouped', 'time_distribution',
-       'last_day_page_fan_adds_by_paid_non_paid_unique_total',
-       'last_day_page_fan_adds_by_paid_non_paid_unique_unpaid',
-       'last_day_page_impressions_paid',
-       'last_day_page_impressions_paid_unique',
-       'last_day_page_posts_impressions_paid',
-       'last_day_page_posts_impressions_viral',
-       'last_day_page_posts_impressions_nonviral_unique',
-       'last_day_page_actions_post_reactions_haha_total', 'last_day_page_fans',
-       'last_day_page_video_complete_views_30s_repeat_views',
-       'last_7_days_page_negative_feedback_by_type_hide_clicks',
-       'last_7_days_page_impressions_nonviral_unique',
-       'last_7_days_page_posts_impressions_nonviral_unique',
-       'last_7_days_page_fans', 'last_7_days_page_fan_removes',
-       'last_7_days_page_fan_removes_unique',
-       'last_7_days_page_video_complete_views_30s_repeat_views']))
+        #tr = load_transformer("models/pkl_transform_1.pkl")
+       #  transformed_sample_data = tr.transform(pd.DataFrame(data = sample_data, columns= ['visual_first_3_seconds', 'background_music_type_first_3_seconds',
+       # 'Primary_Category_1_grouped', 'voice_first_3_seconds_grouped',
+       # 'thumbnail_1_grouped', 'time_distribution',
+       # 'last_day_page_fan_adds_by_paid_non_paid_unique_total',
+       # 'last_day_page_fan_adds_by_paid_non_paid_unique_unpaid',
+       # 'last_day_page_impressions_paid',
+       # 'last_day_page_impressions_paid_unique',
+       # 'last_day_page_posts_impressions_paid',
+       # 'last_day_page_posts_impressions_viral',
+       # 'last_day_page_posts_impressions_nonviral_unique',
+       # 'last_day_page_actions_post_reactions_haha_total', 'last_day_page_fans',
+       # 'last_day_page_video_complete_views_30s_repeat_views',
+       # 'last_7_days_page_negative_feedback_by_type_hide_clicks',
+       # 'last_7_days_page_impressions_nonviral_unique',
+       # 'last_7_days_page_posts_impressions_nonviral_unique',
+       # 'last_7_days_page_fans', 'last_7_days_page_fan_removes',
+       # 'last_7_days_page_fan_removes_unique',
+       # 'last_7_days_page_video_complete_views_30s_repeat_views']))
 
 
         # print(transformed_sample_data)
@@ -299,8 +304,8 @@ def main():
 
         if st.button("Make Prediction"):
             #prediction_label = {"low": 0, "average": 1, 'high': 2}
-            model_predictor = load_model_n_predict("models/classification_xgb_newjplus_without_scaled.pkl")
-            prediction = model_predictor.predict(transformed_sample_data)
+            model_predictor = load_model_n_predict("models/classification_ada_15_newjplus.pkl")
+            prediction = model_predictor.predict(sample_data)
             # st.text(prediction)
             #final_result = get_key(prediction, prediction_label)
             st.success("Predicted video category is --> {}".format(prediction[0].upper()))
